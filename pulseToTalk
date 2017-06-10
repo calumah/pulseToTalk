@@ -1,0 +1,135 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2017
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Python 2/3 compatible
+from __future__ import absolute_import, division, print_function
+import time
+from pulsectl import Pulse
+from pyxhook import pyxhook
+
+# Logger
+import colorlog
+import logging
+handler = logging.StreamHandler()
+handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s%(message)s'))
+logger = colorlog.getLogger('pulseToTalk')
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+class pulseToTalk(object):
+    ''' Simple push to talk binding for X / Pulseaudio in user mode (command line only)
+    '''
+    running = False
+    storedEvent = None
+    isRecording = False
+    hookman = None
+    pulse = None
+
+    def muteSources(self, is_mute=True, printStatus=False):
+        if printStatus is True:
+            logger.debug('Source(s) managed :')
+        sources = self.pulse.source_list()
+        for source in sources:
+            # Exclude monitors input
+            if source.name.endswith('.monitor') is True:
+                continue
+            # Mute source
+            self.pulse.mute(source, is_mute)
+            # Print status if needed
+            if printStatus is True:
+                logger.debug(source)
+
+    def onStoredEvent(self, event):
+        # Switch mode if needed
+        if self.isRecording is False and event.MessageName.endswith(' down') == True:
+            self.isRecording = True
+            self.muteSources(False)
+        elif self.isRecording is True and event.MessageName.endswith(' up') == True:
+            self.isRecording = False
+            self.muteSources(True)
+
+    def onKeyEvent(self, event):
+        # Store key on first key to be used
+        if self.storedEvent is None:
+            self.storedEvent = event
+            if isinstance(event, pyxhook.pyxhookkeyevent):
+                logger.info('Binded KEY event : \'%s\'.' % event.Key)
+            else:
+                logger.info('Binded MOUSE event : \'%s\'.' % ' '.join(event.MessageName.split()[0:2]))
+            logger.warning('Press CTRL + C to exit...')
+            return
+        if isinstance(event, pyxhook.pyxhookkeyevent) and isinstance(self.storedEvent, pyxhook.pyxhookkeyevent):
+            # If key match with stored ascii key value
+            if event.Ascii == self.storedEvent.Ascii:
+                self.onStoredEvent(event)
+        if isinstance(event, pyxhook.pyxhookmouseevent) and isinstance(self.storedEvent, pyxhook.pyxhookmouseevent):
+            # Create mouse key without 'up' and 'down'
+            eventMouseKey = ' '.join(event.MessageName.split()[0:2])
+            # If key match with stored message key
+            if self.storedEvent.MessageName.startswith(eventMouseKey) != -1:
+                self.onStoredEvent(event)
+        return
+
+    def __init__(self):
+        logger.debug('# pulseToTalk v1.0')
+        # Create hookmanager
+        self.hookman = pyxhook.HookManager()
+        # Define our callback to fire when a key / mouse is pressed or released
+        self.hookman.KeyDown = self.onKeyEvent
+        self.hookman.KeyUp = self.onKeyEvent
+        self.hookman.MouseAllButtonsDown = self.onKeyEvent
+        self.hookman.MouseAllButtonsUp = self.onKeyEvent
+        # Hook the keyboard
+        self.hookman.HookKeyboard()
+        # Init pulse
+        self.pulse = Pulse('pulseToTalk')
+        # Wait 0.5 second to avoid binding enter by mistake
+        time.sleep(0.5)
+        # Mute all inputs at start
+        self.muteSources(True, True)
+        # Start listener
+        self.hookman.start()
+        logger.critical('> Press key/mouse to bind :')
+        try :
+            # Create a loop to keep the application running
+            self.running = True
+            while self.running:
+                time.sleep(0.2)
+        except :
+            pass
+        # Close the listener when we are done
+        self.hookman.cancel()
+        # Unmute all
+        self.muteSources(False, True)
+        logger.debug('# pulseToTalk terminated.')
+
+if __name__ == '__main__':
+    import argparse
+    # Command line parser
+    parser = argparse.ArgumentParser(description='pulseToTalk : Simple push to talk binding for X / Pulseaudio in user mode (command line only)')
+    parser.add_argument('--debug', action='store_true', help='Print debug')
+    args = parser.parse_args()
+    # Debug level
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+    # Print license info
+    logger.warning('''This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under certain conditions.''')
+    # Run
+    pulseToTalk()
+    exit(0)
