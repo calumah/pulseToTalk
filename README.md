@@ -26,21 +26,24 @@ $ pip install -r requirements.txt
 $ ./setup.sh
 ```
 
+./setup.sh will download and configure https://github.com/JeffHoogland/pyxhook repository
+
 ## Use
 
+Choose binded key interactive way and start
 ```
 $ ./pulseToTalk
 ```
 
-For help :
+Bind F12 and mouse_middle click key on start (you can list events codes with --debug)
+```
+$ ./pulseToTalk --debug --event_code f12 mouse_middle
+```
 
+For help :
 ```
 $ ./pulseToTalk -h
 ```
-
-## Choose binded key
-
-Wait few second and hit key you want bind (you should use a deadkey or mouse_button)
 
 ## License
 
