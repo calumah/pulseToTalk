@@ -32,19 +32,28 @@ $ ./setup.sh
 
 Choose binded key interactive way and start
 ```
-$ ./pulseToTalk
+$ ./pulseToTalk.py
 ```
 
-Bind F12 and mouse_middle click key on start (you can list events codes with --debug)
+Bind F12 and mouse_middle click key on start (you can list events codes with --debug and press any key)
 ```
-$ ./pulseToTalk --debug --event_code f12 mouse_middle
+$ ./pulseToTalk.py --debug --event_code f12 mouse_middle
+```
+
+Disable recording indicator
+```
+$ ./pulseToTalk.py --no_indicator
 ```
 
 For help :
 ```
-$ ./pulseToTalk -h
+$ ./pulseToTalk.py -h
 ```
 
 ## License
 
 This program comes with ABSOLUTELY NO WARRANTY. This is free software, and you are welcome to redistribute it under certain conditions.
+
+## Authors
+
+- Calumah
