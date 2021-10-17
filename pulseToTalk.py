@@ -33,13 +33,14 @@ class pulseToTalk(object):
     Work in user mode (command line only)
     """
 
-    def __init__(self, event_code=None, no_indicator=False, debug=False):
+    def __init__(self, event_code=None, no_indicator=False, debug=False, sources=None):
         """Init all variables for pulseToTalk
 
         Args :
             - event_code (list) : Bind key names list (optional)
             - no_indicator (book) : Do not show recording indicator
             - debug (bool) : Activate debug mode
+            - sources (list) : Operate only on the given pulseaudio sources
         """
 
         # Init logger
@@ -53,6 +54,8 @@ class pulseToTalk(object):
             self.logger.setLevel(logging.DEBUG)
         else:
             self.logger.setLevel(logging.WARNING)
+
+        self.sources = sources
 
         # Version
         self.logger.debug('[%s] Starting version 1.2' % (
@@ -133,6 +136,9 @@ class pulseToTalk(object):
             # Exclude monitors input
             if source.name.endswith('.monitor'):
                 continue
+            if self.sources and source.name not in self.sources:
+                continue
+
             # Mute source
             self.pulse.mute(source, is_mute)
 
@@ -204,6 +210,11 @@ user mode (command line only)')
         '--no_indicator',
         action='store_true',
         help='Do not show recording indicator'
+    )
+    parser.add_argument(
+        '--sources',
+        nargs='+',
+        help='Operate only on the given pulseaudio sources'
     )
     args = parser.parse_args()
 
