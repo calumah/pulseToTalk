@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import random
 import tkinter as tk
 from pulsectl import Pulse
 
@@ -40,9 +41,15 @@ class RecordingIndicator(tk.Tk):
         # Init pulse (do not support multi-thread !)
         self.pulse = Pulse(self.__class__.__name__)
 
+        self.recording_color = [
+            '#c4181a',
+            '#f9df74',
+            '#ea2b1f',
+        ]
+
     # Custom methods
     def active_recording(self):
-        self.overlay.icon.config(bg='#c4181a')
+        self.overlay.icon.config(bg=random.choice(self.recording_color))
 
     def inactive_recording(self):
         self.overlay.icon.config(bg='grey')

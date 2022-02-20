@@ -16,51 +16,52 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Python 2/3 compatible
-from __future__ import absolute_import, division, print_function
 import time
-from pulsectl import Pulse
-from pyxhook import pyxhook
-from recording_indicator import RecordingIndicator
-
-import colorlog
 import logging
 
+import colorlog
+import pyxhook
+from pulsectl import Pulse
 
-class pulseToTalk(object):
+from recording_indicator import RecordingIndicator
+
+
+class pulseToTalk:
     """Simple push to talk binding for X / Pulseaudio
 
     Work in user mode (command line only)
     """
 
-    def __init__(self, event_code=None, no_indicator=False, debug=False, sources=None):
-        """Init all variables for pulseToTalk
+    def __init__(self, **kwargs):
+        """Init all variables for pulseToTalk and save config
 
-        Args :
-            - event_code (list) : Bind key names list (optional)
-            - no_indicator (book) : Do not show recording indicator
-            - debug (bool) : Activate debug mode
-            - sources (list) : Operate only on the given pulseaudio sources
+        Kwargs :
+            - event_code (list) : Bind key names list
+                (optional) (default: None)
+            - no_indicator (bool) : Do not show recording
+                indicator (default: False)
+            - sources (list) : Operate only on the given
+                pulseaudio sources (default: None)
+            - debug (bool) : Activate debug mode (default: False)
         """
+        self.config = kwargs
 
         # Init logger
         handler = logging.StreamHandler()
         handler.setFormatter(
-            colorlog.ColoredFormatter('%(log_color)s%(message)s')
+            colorlog.ColoredFormatter(
+                '[%(name)s]%(log_color)s %(levelname)s > %(message)s'
+            )
         )
         self.logger = colorlog.getLogger(self.__class__.__name__)
         self.logger.addHandler(handler)
-        if debug:
+        if self.config.get('debug', False) is True:
             self.logger.setLevel(logging.DEBUG)
         else:
             self.logger.setLevel(logging.WARNING)
 
-        self.sources = sources
-
         # Version
-        self.logger.debug('[%s] Starting version 1.2' % (
-            self.__class__.__name__
-        ))
+        self.logger.debug('Starting version 1.3')
 
         # Create hookmanager
         self.hookman = pyxhook.HookManager()
@@ -75,10 +76,16 @@ class pulseToTalk(object):
         # Init pulse (do not support multi-thread !)
         self.pulse = Pulse(self.__class__.__name__)
 
-        self.no_indicator = no_indicator
-        if self.no_indicator is False:
+        # Init empty recording indicator
+        self.recording_indicator = None
+        if self.config.get('no_indicator', False) is False:
             # Init RecordingIndicator
             self.recording_indicator = RecordingIndicator()
+
+        # Store if recording is locked
+        self.lock_recording = False
+        # Store if control is keep pushed
+        self.is_control_modifier = False
 
         # State of recording
         self.is_recording = False
@@ -89,21 +96,18 @@ class pulseToTalk(object):
         # Init custom variables
         self.stored_event_code = set()
         # If event code is passed by args
-        if event_code:
-            self.stored_event_code = set(event_code)
+        if self.config.get('event_code'):
+            self.stored_event_code = set(self.config['event_code'])
 
         # Process stored_event_code
-        self.logger.warning('> Press CTRL + C to exit...')
+        self.logger.warning('Press CTRL + C to exit...')
         if len(self.stored_event_code) == 0:
             self.logger.debug('!!! Key binding not yet configured !')
-            self.logger.critical('> Press key/mouse to bind :')
+            self.logger.critical('Press key/mouse to bind :')
         else:
             self.logger.critical('Configured bind(s) : %s' % ', '.join(
                 self.stored_event_code
             ))
-
-        # Finally run
-        self.run()
 
     def run(self):
         """Run infinite loop to watch user keys / mouse
@@ -111,7 +115,7 @@ class pulseToTalk(object):
         try:
             # Create a loop to keep the application running
             while True:
-                if self.no_indicator is False:
+                if self.recording_indicator is not None:
                     self.recording_indicator.do_update()
                 time.sleep(0.1)
         except KeyboardInterrupt:
@@ -120,7 +124,7 @@ class pulseToTalk(object):
         self.hookman.cancel()
         # Unmute all
         self.mute_sources(False)
-        self.logger.debug('[%s] terminated.' % self.__class__.__name__)
+        self.logger.debug('Terminated')
 
     def mute_sources(self, is_mute=True):
         """Mute or unmute all audio sources with pulseaudio
@@ -136,7 +140,9 @@ class pulseToTalk(object):
             # Exclude monitors input
             if source.name.endswith('.monitor'):
                 continue
-            if self.sources and source.name not in self.sources:
+
+            # Mute only specified sources
+            if self.config.get('sources') and source.name not in self.config.get('sources'):
                 continue
 
             # Mute source
@@ -147,30 +153,55 @@ class pulseToTalk(object):
     def on_stored_event(self, event):
         """Switch mode if needed if one of stored event is trigger
         """
-        if not self.is_recording and event.MessageName.endswith(' down'):
+        # Lock recording if Ctrl is pressed once with event
+        if self.is_control_modifier is True and self.is_event_down(event):
+            if self.lock_recording is False:
+                self.lock_recording = True
+            else:
+                self.lock_recording = False
+
+        # If lock_recording force recording until it's stopped
+        # Normal activate recording on press
+        if self.is_recording is False and (
+            self.is_event_down(event) or self.lock_recording is True
+        ):
             self.is_recording = True
             self.mute_sources(is_mute=False)
-
-        elif self.is_recording and event.MessageName.endswith(' up'):
+        # Normal disable recording on release key
+        elif self.is_recording is True and self.is_event_up(
+                event
+        ) and self.lock_recording is False:
             self.is_recording = False
             self.mute_sources()
 
-    def get_event_code(self, event):
+    @staticmethod
+    def get_event_code(event):
         """Return cleaned event code
         """
-        if isinstance(event, pyxhook.pyxhookkeyevent):
+        # Try to detect if Mouse or Key are pressed
+        if hasattr(event, 'Key') is True:
             return event.Key.lower()
-
-        if isinstance(event, pyxhook.pyxhookmouseevent):
+        if hasattr(event, 'Position') is True:
             # Create mouse key without 'up' and 'down' like 'mouse_left'
             return '_'.join(event.MessageName.lower().split()[0:2])
 
         raise ValueError('Event not recognized : "%s" ' % event)
 
-    def on_key_event(self, event):
+    @staticmethod
+    def is_event_down(event):
+        if event is None:
+            return False
+        return event.MessageName.endswith(' down')
 
+    @staticmethod
+    def is_event_up(event):
+        if event is None:
+            return False
+        return event.MessageName.endswith(' up')
+
+    def on_key_event(self, event):
         event_code = self.get_event_code(event)
-        self.logger.debug('Event detected : %s' % event_code)
+        self.logger.debug('Event detected : %s %s' % (event, event_code))
 
         # Store key on first key to be used if no event previously registred
         if len(self.stored_event_code) == 0:
@@ -179,10 +210,17 @@ class pulseToTalk(object):
 
             # Print binded event and exit function
             return self.logger.critical('Binded %s event : \'%s\'.' % (
-                'KEY' if isinstance(event, pyxhook.pyxhookkeyevent)
+                'KEY' if hasattr(event, 'Key')
                 else 'MOUSE',
                 event_code
             ))
+
+        # Check ctrl modifier key
+        if event_code in ['control_l', 'control_r']:
+            if self.is_event_down(event):
+                self.is_control_modifier = True
+            else:
+                self.is_control_modifier = False
 
         # Trigger if event is the same as stored event
         if event_code in self.stored_event_code:
@@ -224,6 +262,6 @@ This is free software, and you are welcome \
 to redistribute it under certain conditions.''')
 
     # Run
-    p = pulseToTalk(**vars(args))
+    p = pulseToTalk(**vars(args)).run()
 
     exit(0)

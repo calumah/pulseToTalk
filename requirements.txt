@@ -1,3 +1,5 @@
 pulsectl
 python-xlib
 colorlog
+pyxhook
+tk
