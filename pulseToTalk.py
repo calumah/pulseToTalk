@@ -16,8 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import time
 import logging
+import threading
 
 import colorlog
 import pyxhook
@@ -110,14 +110,19 @@ class pulseToTalk:
             ))
 
     def run(self):
-        """Run infinite loop to watch user keys / mouse
+        """Run the main loop to watch user keys / mouse.
+
+        If the recording indicator is active, delegates to tkinter's mainloop
+        so that X11 event processing stays in a single thread (no concurrent
+        Xlib access between pyxhook's thread and tkinter).
+        When the indicator is disabled, blocks on a threading.Event instead.
         """
         try:
-            # Create a loop to keep the application running
-            while True:
-                if self.recording_indicator is not None:
-                    self.recording_indicator.do_update()
-                time.sleep(0.1)
+            if self.recording_indicator is not None:
+                self.recording_indicator.start()
+                self.recording_indicator.mainloop()
+            else:
+                threading.Event().wait()
         except KeyboardInterrupt:
             pass
         # Close the listener when we are done
