@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import random
+import math
 import tkinter as tk
 from pulsectl import Pulse
 
@@ -31,28 +31,33 @@ class RecordingIndicator(tk.Tk):
         self.withdraw()
 
         # Register overlay
-        self.overlay = Overlay(
-            self,
-            cursor='hand1',
-            borderwidth=2,
-            relief='solid'
-        )
+        self.overlay = Overlay(self)
 
         # Init pulse (do not support multi-thread !)
         self.pulse = Pulse(self.__class__.__name__)
 
-        self.recording_color = [
-            '#c4181a',
-            '#f9df74',
-            '#ea2b1f',
-        ]
+        self._phase = 0.0
 
     # Custom methods
     def active_recording(self):
-        self.overlay.icon.config(bg=random.choice(self.recording_color))
+        self._phase += 0.15
+        brightness = (math.sin(self._phase) + 1) / 2  # 0.0 → 1.0
+        r = int(180 + 55 * brightness)
+        g = int(20 * (1 - brightness))
+        b = int(20 * (1 - brightness))
+        self.overlay.set_dot_color('#%02x%02x%02x' % (r, g, b))
 
     def inactive_recording(self):
-        self.overlay.icon.config(bg='grey')
+        self._phase = 0.0
+        self.overlay.set_dot_color('#3a3a3a')
+
+    def start(self):
+        """Start the periodic update loop using tkinter's scheduler."""
+        self._schedule_update()
+
+    def _schedule_update(self):
+        self.do_update()
+        self.after(100, self._schedule_update)
 
     def do_update(self):
         # Check status for recording indicator
@@ -60,10 +65,6 @@ class RecordingIndicator(tk.Tk):
             self.inactive_recording()
         else:
             self.active_recording()
-
-        # Update tkinter window
-        self.update_idletasks()
-        self.update()
 
     def is_sources_muted(self):
         """Return False if at least one source is recording
@@ -81,31 +82,42 @@ class RecordingIndicator(tk.Tk):
 
 class Overlay(tk.Toplevel):
 
+    SIZE = 36
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.overrideredirect(True)
+        self.attributes('-topmost', True)
 
-        # At start center on top
-        self.geometry('40x40+%d+0' % (
-            int(
-                self.winfo_screenwidth() / 2
-            )
+        self.geometry('%dx%d+%d+6' % (
+            self.SIZE, self.SIZE,
+            int(self.winfo_screenwidth() / 2)
         ))
 
-        # Can be bind to label or whole overlay
-        self.icon = tk.Label(
+        self.canvas = tk.Canvas(
             self,
-            text=u'[\u23FA]',
-            height=5,
-            width=10,
-            font=('DejaVu', 12, 'bold')
+            width=self.SIZE,
+            height=self.SIZE,
+            bg='#1a1a1a',
+            highlightthickness=0
         )
-        self.icon.pack()
+        self.canvas.pack()
 
-        self.bind('<ButtonPress-1>', self.start_move)
-        self.bind('<ButtonRelease-1>', self.stop_move)
-        self.bind('<B1-Motion>', self.on_motion)
+        pad = 8
+        self.dot = self.canvas.create_oval(
+            pad, pad,
+            self.SIZE - pad, self.SIZE - pad,
+            fill='#3a3a3a',
+            outline=''
+        )
+
+        self.canvas.bind('<ButtonPress-1>', self.start_move)
+        self.canvas.bind('<ButtonRelease-1>', self.stop_move)
+        self.canvas.bind('<B1-Motion>', self.on_motion)
+
+    def set_dot_color(self, color):
+        self.canvas.itemconfig(self.dot, fill=color)
 
     def start_move(self, event):
         self.x = event.x
