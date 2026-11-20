@@ -1,0 +1,30 @@
+[project]
+name = "pulsetotalk"
+version = "1.3.1"
+description = "Simple \"push to talk\" for Pulseaudio on GNU/Linux Desktop in user mode wrote in python (command line only)"
+authors = [{ name = "Lucas Lebas", email = "calummah@gmail.com" }]
+license = "GPL-3.0-or-later"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pulsectl>=24.11.0",
+    "python-xlib>=0.33",
+    "colorlog>=6.9.0",
+    "pyxhook>=1.0.0",
+    "tk>=0.1.0",
+]
+
+[project.optional-dependencies]
+# Wayland-capable input backend (reads /dev/input). Builds a C extension, so
+# it is kept optional: `uv sync --extra evdev`.
+evdev = ["evdev>=1.6.1"]
+
+[dependency-groups]
+dev = [
+    "ipython",
+    "ruff",
+    "pre-commit",
+]
+
+[tool.uv]
+package = false
