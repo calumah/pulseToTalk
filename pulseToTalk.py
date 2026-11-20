@@ -65,6 +65,24 @@ class pulseToTalk:
 
         # Create hookmanager
         self.hookman = pyxhook.HookManager()
+        # Disable pyxhook's per-event focused-window lookup.
+        #
+        # pulseToTalk only ever reads event.Key / event.MessageName /
+        # event.Position, never the focused-window metadata. Yet pyxhook calls
+        # xwindowinfo() on *every* key/mouse event, which does an X round-trip
+        # (local_dpy.get_input_focus()) wrapped in a bare `except:`.
+        #
+        # On python-xlib 0.33 (Python 3.13+), an exception escaping
+        # send_and_recv() during that round-trip leaves the display's internal
+        # recv_active flag set; pyxhook swallows the exception, and every
+        # subsequent use of the display then busy-loops at 100% CPU forever
+        # (see keyd issue #1329). This is triggered in the wild when the focused
+        # window - often belonging to another process that is closing - makes
+        # the X request fail. Stubbing this out removes both the trigger and the
+        # needless per-event round-trip.
+        self.hookman.xwindowinfo = lambda: {
+            'name': None, 'class': None, 'handle': None
+        }
         # Define our callback to fire when a key / mouse is pressed or released
         self.hookman.KeyDown = self.on_key_event
         self.hookman.KeyUp = self.on_key_event
