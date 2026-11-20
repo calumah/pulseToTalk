@@ -20,9 +20,9 @@ import logging
 import threading
 
 import colorlog
-import pyxhook
 from pulsectl import Pulse
 
+from input_backends import make_backend
 from recording_indicator import RecordingIndicator
 
 
@@ -42,6 +42,8 @@ class pulseToTalk:
                 indicator (default: False)
             - sources (list) : Operate only on the given
                 pulseaudio sources (default: None)
+            - backend (str) : Input backend, 'xhook' (X11) or
+                'evdev' (X11 + Wayland) (default: 'xhook')
             - debug (bool) : Activate debug mode (default: False)
         """
         self.config = kwargs
@@ -61,35 +63,14 @@ class pulseToTalk:
             self.logger.setLevel(logging.WARNING)
 
         # Version
-        self.logger.debug('Starting version 1.3')
+        self.logger.debug('Starting version 1.3.1')
 
-        # Create hookmanager
-        self.hookman = pyxhook.HookManager()
-        # Disable pyxhook's per-event focused-window lookup.
-        #
-        # pulseToTalk only ever reads event.Key / event.MessageName /
-        # event.Position, never the focused-window metadata. Yet pyxhook calls
-        # xwindowinfo() on *every* key/mouse event, which does an X round-trip
-        # (local_dpy.get_input_focus()) wrapped in a bare `except:`.
-        #
-        # On python-xlib 0.33 (Python 3.13+), an exception escaping
-        # send_and_recv() during that round-trip leaves the display's internal
-        # recv_active flag set; pyxhook swallows the exception, and every
-        # subsequent use of the display then busy-loops at 100% CPU forever
-        # (see keyd issue #1329). This is triggered in the wild when the focused
-        # window - often belonging to another process that is closing - makes
-        # the X request fail. Stubbing this out removes both the trigger and the
-        # needless per-event round-trip.
-        self.hookman.xwindowinfo = lambda: {
-            'name': None, 'class': None, 'handle': None
-        }
-        # Define our callback to fire when a key / mouse is pressed or released
-        self.hookman.KeyDown = self.on_key_event
-        self.hookman.KeyUp = self.on_key_event
-        self.hookman.MouseAllButtonsDown = self.on_key_event
-        self.hookman.MouseAllButtonsUp = self.on_key_event
-        # Hook the keyboard
-        self.hookman.HookKeyboard()
+        # Create the input backend ('xhook' for X11, 'evdev' for X11 + Wayland).
+        # It calls on_key_event() with a normalized InputEvent for every key /
+        # mouse press and release; the thread is only started later, in run().
+        backend_name = self.config.get('backend') or 'xhook'
+        self.logger.debug('Using input backend : %s' % backend_name)
+        self.backend = make_backend(backend_name, self.on_key_event)
 
         # Init pulse (do not support multi-thread !)
         self.pulse = Pulse(self.__class__.__name__)
@@ -109,13 +90,13 @@ class pulseToTalk:
         self.is_recording = False
         # Mute all inputs at start
         self.mute_sources()
-        # Start listener
-        self.hookman.start()
         # Init custom variables
         self.stored_event_code = set()
         # If event code is passed by args
         if self.config.get('event_code'):
             self.stored_event_code = set(self.config['event_code'])
+        # Start the input listener now that our state is ready
+        self.backend.start()
 
         # Process stored_event_code
         self.logger.warning('Press CTRL + C to exit...')
@@ -130,10 +111,10 @@ class pulseToTalk:
     def run(self):
         """Run the main loop to watch user keys / mouse.
 
-        If the recording indicator is active, delegates to tkinter's mainloop
-        so that X11 event processing stays in a single thread (no concurrent
-        Xlib access between pyxhook's thread and tkinter).
-        When the indicator is disabled, blocks on a threading.Event instead.
+        The input backend runs in its own thread; this method just keeps the
+        process alive. If the recording indicator is active, it delegates to
+        tkinter's mainloop (so the indicator's X11 access stays on one thread);
+        otherwise it blocks on a threading.Event until Ctrl + C.
         """
         try:
             if self.recording_indicator is not None:
@@ -144,7 +125,7 @@ class pulseToTalk:
         except KeyboardInterrupt:
             pass
         # Close the listener when we are done
-        self.hookman.cancel()
+        self.backend.stop()
         # Unmute all
         self.mute_sources(False)
         self.logger.debug('Terminated')
@@ -174,79 +155,48 @@ class pulseToTalk:
             self.logger.info('- %s' % source)
 
     def on_stored_event(self, event):
-        """Switch mode if needed if one of stored event is trigger
+        """Switch mode if needed when one of the bound events is triggered
         """
-        # Lock recording if Ctrl is pressed once with event
-        if self.is_control_modifier is True and self.is_event_down(event):
-            if self.lock_recording is False:
-                self.lock_recording = True
-            else:
-                self.lock_recording = False
+        # Toggle the recording lock when Ctrl is held and a bound key is pressed
+        if self.is_control_modifier is True and event.is_down:
+            self.lock_recording = not self.lock_recording
 
         # If lock_recording force recording until it's stopped
         # Normal activate recording on press
         if self.is_recording is False and (
-            self.is_event_down(event) or self.lock_recording is True
+            event.is_down or self.lock_recording is True
         ):
             self.is_recording = True
             self.mute_sources(is_mute=False)
         # Normal disable recording on release key
-        elif self.is_recording is True and self.is_event_up(
-                event
-        ) and self.lock_recording is False:
+        elif self.is_recording is True and event.is_up and (
+            self.lock_recording is False
+        ):
             self.is_recording = False
             self.mute_sources()
 
-    @staticmethod
-    def get_event_code(event):
-        """Return cleaned event code
-        """
-        # Try to detect if Mouse or Key are pressed
-        if hasattr(event, 'Key') is True:
-            return event.Key.lower()
-        if hasattr(event, 'Position') is True:
-            # Create mouse key without 'up' and 'down' like 'mouse_left'
-            return '_'.join(event.MessageName.lower().split()[0:2])
-
-        raise ValueError('Event not recognized : "%s" ' % event)
-
-    @staticmethod
-    def is_event_down(event):
-        if event is None:
-            return False
-        return event.MessageName.endswith(' down')
-
-    @staticmethod
-    def is_event_up(event):
-        if event is None:
-            return False
-        return event.MessageName.endswith(' up')
-
     def on_key_event(self, event):
-        event_code = self.get_event_code(event)
-        self.logger.debug('Event detected : %s %s' % (event, event_code))
+        """Handle a normalized InputEvent coming from the active backend
+        """
+        self.logger.debug('Event detected : %s' % event)
 
         # Store key on first key to be used if no event previously registred
         if len(self.stored_event_code) == 0:
 
-            self.stored_event_code.add(event_code)
+            self.stored_event_code.add(event.code)
 
             # Print binded event and exit function
             return self.logger.critical('Binded %s event : \'%s\'.' % (
-                'KEY' if hasattr(event, 'Key')
-                else 'MOUSE',
-                event_code
+                'MOUSE' if event.is_mouse else 'KEY',
+                event.code
             ))
 
         # Check ctrl modifier key
-        if event_code in ['control_l', 'control_r']:
-            if self.is_event_down(event):
-                self.is_control_modifier = True
-            else:
-                self.is_control_modifier = False
+        if event.is_ctrl:
+            self.is_control_modifier = event.is_down
 
         # Trigger if event is the same as stored event
-        if event_code in self.stored_event_code:
+        if event.code in self.stored_event_code:
             self.on_stored_event(event)
 
 
@@ -276,6 +226,13 @@ user mode (command line only)')
         '--sources',
         nargs='+',
         help='Operate only on the given pulseaudio sources'
+    )
+    parser.add_argument(
+        '--backend',
+        choices=['xhook', 'evdev'],
+        default='xhook',
+        help='Input backend : xhook (X11 only, default) or '
+             'evdev (X11 + Wayland, needs read access to /dev/input)'
     )
     args = parser.parse_args()
 

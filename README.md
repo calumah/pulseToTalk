@@ -1,78 +1,122 @@
 # pulseToTalk
 
-Simple push to talk binding for X / Pulseaudio in user mode (command line only)
+Simple **push-to-talk** for PulseAudio on a GNU/Linux desktop, in user mode (command line only).
+
+Your microphone stays muted by default and is unmuted only while you hold your chosen key or mouse button — no more being heard when you did not mean to. No root access, no desktop-environment integration, no global config to edit.
 
 ## Features
 
-- Choose any key/mouse button (can be both) to activate your microphone when you want.
-- Recording indicator showing when sound is captured (can be disabled).
-- Lock recording if needed by using Ctrl + <Key> (unlock same way).
-- Run without root access.
+- **Bind any key and/or mouse button** to activate your microphone while held (you can bind several at once).
+- **Recording indicator**: a small draggable overlay dot that pulses red while sound is being captured (can be disabled).
+- **Lock recording** hands-free with `Ctrl + <bound key>`, and unlock it the same way.
+- **Target specific sources**: mute/unmute only the PulseAudio sources you choose, or all of them.
+- **Works on X11 and Wayland**: default X11 backend, plus an optional `evdev` backend that reads input below the display server.
+- **Runs entirely in user mode** — no root required.
 
-## Install / Download
+## Requirements
 
-Install `python` >= 3.3 from your distribution.
+- **PulseAudio**, or **PipeWire** with the PulseAudio compatibility layer (`pipewire-pulse`). Both are muted/unmuted transparently.
+- A display server:
+  - **X11** — works out of the box with the default `xhook` backend.
+  - **Wayland** — use the `evdev` backend (see [Wayland](#wayland-evdev-backend) below).
+- **Python ≥ 3.12**.
+- [**uv**](https://docs.astral.sh/uv/) to manage the virtual environment and dependencies.
 
-Download and extract :
-```
-$ wget https://github.com/calumah/pulseToTalk/archive/master.zip
-$ unzip master.zip
-```
+## Install
 
-OR
-
+Clone the repository:
 ```
 $ git clone https://github.com/calumah/pulseToTalk.git
-```
-
-## Setup and dependencies
-
-This project uses [uv](https://docs.astral.sh/uv/) to manage its virtual environment and dependencies.
-
-From source:
-```
 $ cd pulseToTalk/
+```
+
+Then create the environment and install the dependencies:
+```
 $ uv sync
 ```
 
-## Use
+To also build the optional Wayland-capable `evdev` backend:
+```
+$ uv sync --extra evdev
+```
 
-Choose binded key interactive way and start
+## Usage
+
+Start pulseToTalk and bind a key/button interactively — the first key or button you press after launch becomes the trigger:
 ```
 $ uv run ./pulseToTalk.py
 ```
 
-For example you can bind F12 and `mouse_middle` click key on start (you can list events codes with `--debug` and press any key)
+Bind keys up front, e.g. `F12` and the middle mouse button:
 ```
-$ uv run ./pulseToTalk.py --debug --event_code f12 mouse_middle
+$ uv run ./pulseToTalk.py --event_code f12 mouse_middle
 ```
 
-Another example binding `scroll_lock` key
+Bind the `scroll_lock` key:
 ```
 $ uv run ./pulseToTalk.py --event_code scroll_lock
 ```
 
-Disable recording indicator
+Disable the recording indicator overlay:
 ```
 $ uv run ./pulseToTalk.py --no_indicator
 ```
 
-Operate only on the given pulseaudio sources (you can list sources name with --debug when mute/unmute)
-
+Operate only on specific PulseAudio sources:
 ```
 $ uv run ./pulseToTalk.py --sources alsa_input.pci-0000_2d_00.4.analog-stereo
 ```
 
-For help :
+Find the names of your keys, mouse buttons and sources by running with `--debug` and pressing keys / toggling the mute:
+```
+$ uv run ./pulseToTalk.py --debug --event_code f12 mouse_middle
+```
+
+For the full list of options:
 ```
 $ uv run ./pulseToTalk.py -h
 ```
 
+### Options
+
+| Option | Description |
+| --- | --- |
+| `--event_code <key> [<key> ...]` | Key(s) and/or mouse button(s) to bind. If omitted, the first input pressed after launch is used. |
+| `--no_indicator` | Do not show the recording indicator overlay. |
+| `--sources <name> [<name> ...]` | Operate only on the given PulseAudio sources (default: all). |
+| `--backend {xhook,evdev}` | Input backend: `xhook` (X11 only, default) or `evdev` (X11 + Wayland). See [Wayland](#wayland-evdev-backend). |
+| `--debug` | Print debug output (key codes, source names, events). |
+
+### Lock recording
+
+Hold `Ctrl` and press a bound key to **lock** recording on: your microphone stays unmuted until you repeat `Ctrl + <bound key>` to unlock it. Useful for long calls where you do not want to keep a key held down.
+
+Stop pulseToTalk at any time with `Ctrl + C`; all sources are unmuted again on exit.
+
+### Wayland (evdev backend)
+
+The default `xhook` backend relies on X11 global key hooks, which Wayland forbids by design. To use pulseToTalk under Wayland, switch to the `evdev` backend, which reads `/dev/input` directly — below the display server — so the same backend also works on X11.
+
+Install the backend and grant read access to input devices (one-time setup, then re-login):
+```
+$ uv sync --extra evdev
+$ sudo usermod -aG input $USER
+```
+
+Then run with `--backend evdev`:
+```
+$ uv run --extra evdev ./pulseToTalk.py --backend evdev --event_code f12
+```
+
+Notes:
+- Key **names differ** between backends (e.g. Scroll Lock is `scroll_lock` under `xhook` but `scrolllock` under `evdev`). List the names your backend reports with `--debug`.
+- The recording indicator runs through XWayland; it is displayed, but Wayland may restrict its position and always-on-top behaviour.
+
 ## License
 
-This program comes with ABSOLUTELY NO WARRANTY. This is free software, and you are welcome to redistribute it under certain conditions.
+GPL-3.0-or-later. This program comes with ABSOLUTELY NO WARRANTY. This is free software, and you are welcome to redistribute it under certain conditions. See [LICENSE](LICENSE).
 
-## Authors/Contributors
+## Authors / Contributors
 
 - calumah
 - sur5r
