@@ -44,37 +44,37 @@ $ uv sync --extra evdev
 
 Start pulseToTalk and bind a key/button interactively — the first key or button you press after launch becomes the trigger:
 ```
-$ uv run ./pulseToTalk.py
+$ uv run pulsetotalk
 ```
 
 Bind keys up front, e.g. `F12` and the middle mouse button:
 ```
-$ uv run ./pulseToTalk.py --event_code f12 mouse_middle
+$ uv run pulsetotalk --event_code f12 mouse_middle
 ```
 
 Bind the `scroll_lock` key:
 ```
-$ uv run ./pulseToTalk.py --event_code scroll_lock
+$ uv run pulsetotalk --event_code scroll_lock
 ```
 
 Disable the recording indicator overlay:
 ```
-$ uv run ./pulseToTalk.py --no_indicator
+$ uv run pulsetotalk --no_indicator
 ```
 
 Operate only on specific PulseAudio sources:
 ```
-$ uv run ./pulseToTalk.py --sources alsa_input.pci-0000_2d_00.4.analog-stereo
+$ uv run pulsetotalk --sources alsa_input.pci-0000_2d_00.4.analog-stereo
 ```
 
 Find the names of your keys, mouse buttons and sources by running with `--debug` and pressing keys / toggling the mute:
 ```
-$ uv run ./pulseToTalk.py --debug --event_code f12 mouse_middle
+$ uv run pulsetotalk --debug --event_code f12 mouse_middle
 ```
 
 For the full list of options:
 ```
-$ uv run ./pulseToTalk.py -h
+$ uv run pulsetotalk -h
 ```
 
 ### Options
@@ -105,7 +105,7 @@ $ sudo usermod -aG input $USER
 
 Then run with `--backend evdev`:
 ```
-$ uv run --extra evdev ./pulseToTalk.py --backend evdev --event_code f12
+$ uv run --extra evdev pulsetotalk --backend evdev --event_code f12
 ```
 
 Notes:

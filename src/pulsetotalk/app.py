@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-#
 # Copyright (C) 2020
 #
 # This program is free software: you can redistribute it and/or modify
@@ -18,14 +16,14 @@
 """Push-to-talk microphone muting for PulseAudio in user mode (CLI only)."""
 
 import logging
-import sys
 import threading
 
 import colorlog
 from pulsectl import Pulse
 
-from input_backends import InputEvent, make_backend
-from recording_indicator import RecordingIndicator
+from . import __version__
+from .backends import InputEvent, make_backend
+from .indicator import RecordingIndicator
 
 
 class PulseToTalk:
@@ -65,7 +63,7 @@ class PulseToTalk:
             self.logger.setLevel(logging.WARNING)
 
         # Version
-        self.logger.debug('Starting version 1.3.1')
+        self.logger.debug(f'Starting version {__version__}')
 
         # Create the input backend ('xhook' for X11, 'evdev' for X11 + Wayland).
         # It calls on_key_event() with a normalized InputEvent for every key /
@@ -193,50 +191,3 @@ class PulseToTalk:
         # Trigger if event is the same as stored event
         if event.code in self.stored_event_code:
             self.on_stored_event(event)
-
-
-if __name__ == '__main__':
-    import argparse
-
-    # Command line parser
-    parser = argparse.ArgumentParser(description='pulseToTalk : \
-Simple push to talk binding for X / Pulseaudio in \
-user mode (command line only)')
-    parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='Print debug'
-    )
-    parser.add_argument(
-        '--event_code',
-        nargs='+',
-        help='Choose key/mouse to bind (multiple choices allowed)'
-    )
-    parser.add_argument(
-        '--no_indicator',
-        action='store_true',
-        help='Do not show recording indicator'
-    )
-    parser.add_argument(
-        '--sources',
-        nargs='+',
-        help='Operate only on the given pulseaudio sources'
-    )
-    parser.add_argument(
-        '--backend',
-        choices=['xhook', 'evdev'],
-        default='xhook',
-        help='Input backend : xhook (X11 only, default) or '
-             'evdev (X11 + Wayland, needs read access to /dev/input)'
-    )
-    args = parser.parse_args()
-
-    # Print license info
-    print('''This program comes with ABSOLUTELY NO WARRANTY.
-This is free software, and you are welcome \
-to redistribute it under certain conditions.''')
-
-    # Run
-    PulseToTalk(**vars(args)).run()
-
-    sys.exit(0)
