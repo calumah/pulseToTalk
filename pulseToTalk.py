@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 #
 # Copyright (C) 2020
 #
@@ -16,24 +15,27 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+"""Push-to-talk microphone muting for PulseAudio in user mode (CLI only)."""
+
 import logging
+import sys
 import threading
 
 import colorlog
 from pulsectl import Pulse
 
-from input_backends import make_backend
+from input_backends import InputEvent, make_backend
 from recording_indicator import RecordingIndicator
 
 
-class pulseToTalk:
-    """Simple push to talk binding for X / Pulseaudio
+class PulseToTalk:
+    """Simple push to talk binding for X / Pulseaudio.
 
     Work in user mode (command line only)
     """
 
-    def __init__(self, **kwargs):
-        """Init all variables for pulseToTalk and save config
+    def __init__(self, **kwargs: object) -> None:
+        """Init all variables for pulseToTalk and save config.
 
         Kwargs :
             - event_code (list) : Bind key names list
@@ -69,7 +71,7 @@ class pulseToTalk:
         # It calls on_key_event() with a normalized InputEvent for every key /
         # mouse press and release; the thread is only started later, in run().
         backend_name = self.config.get('backend') or 'xhook'
-        self.logger.debug('Using input backend : %s' % backend_name)
+        self.logger.debug(f'Using input backend : {backend_name}')
         self.backend = make_backend(backend_name, self.on_key_event)
 
         # Init pulse (do not support multi-thread !)
@@ -104,11 +106,10 @@ class pulseToTalk:
             self.logger.debug('!!! Key binding not yet configured !')
             self.logger.critical('Press key/mouse to bind :')
         else:
-            self.logger.critical('Configured bind(s) : %s' % ', '.join(
-                self.stored_event_code
-            ))
+            binds = ', '.join(self.stored_event_code)
+            self.logger.critical(f'Configured bind(s) : {binds}')
 
-    def run(self):
+    def run(self) -> None:
         """Run the main loop to watch user keys / mouse.
 
         The input backend runs in its own thread; this method just keeps the
@@ -130,15 +131,14 @@ class pulseToTalk:
         self.mute_sources(False)
         self.logger.debug('Terminated')
 
-    def mute_sources(self, is_mute=True):
-        """Mute or unmute all audio sources with pulseaudio
-        """
-
+    def mute_sources(self, is_mute: bool = True) -> None:
+        """Mute or unmute all audio sources with pulseaudio."""
         if is_mute:
             self.logger.info('Do source(s) MUTE :')
         else:
             self.logger.info('Do source(s) UNMUTE :')
 
+        sources = self.config.get('sources')
         for source in self.pulse.source_list():
 
             # Exclude monitors input
@@ -146,17 +146,16 @@ class pulseToTalk:
                 continue
 
             # Mute only specified sources
-            if self.config.get('sources') and source.name not in self.config.get('sources'):
+            if sources and source.name not in sources:
                 continue
 
             # Mute source
             self.pulse.mute(source, is_mute)
 
-            self.logger.info('- %s' % source)
+            self.logger.info(f'- {source}')
 
-    def on_stored_event(self, event):
-        """Switch mode if needed when one of the bound events is triggered
-        """
+    def on_stored_event(self, event: InputEvent) -> None:
+        """Switch mode if needed when one of the bound events is triggered."""
         # Toggle the recording lock when Ctrl is held and a bound key is pressed
         if self.is_control_modifier is True and event.is_down:
             self.lock_recording = not self.lock_recording
@@ -175,21 +174,17 @@ class pulseToTalk:
             self.is_recording = False
             self.mute_sources()
 
-    def on_key_event(self, event):
-        """Handle a normalized InputEvent coming from the active backend
-        """
-        self.logger.debug('Event detected : %s' % event)
+    def on_key_event(self, event: InputEvent) -> None:
+        """Handle a normalized InputEvent coming from the active backend."""
+        self.logger.debug(f'Event detected : {event}')
 
         # Store key on first key to be used if no event previously registred
         if len(self.stored_event_code) == 0:
-
             self.stored_event_code.add(event.code)
-
-            # Print binded event and exit function
-            return self.logger.critical('Binded %s event : \'%s\'.' % (
-                'MOUSE' if event.is_mouse else 'KEY',
-                event.code
-            ))
+            # Print binded event and stop here
+            kind = 'MOUSE' if event.is_mouse else 'KEY'
+            self.logger.critical(f"Binded {kind} event : '{event.code}'.")
+            return
 
         # Check ctrl modifier key
         if event.is_ctrl:
@@ -242,6 +237,6 @@ This is free software, and you are welcome \
 to redistribute it under certain conditions.''')
 
     # Run
-    p = pulseToTalk(**vars(args)).run()
+    PulseToTalk(**vars(args)).run()
 
-    exit(0)
+    sys.exit(0)

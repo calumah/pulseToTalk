@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 #
 # Copyright (C) 2020
 #
@@ -36,7 +35,10 @@ under xhook but ``scrolllock`` under evdev). Discover the names your backend
 reports by running pulseToTalk with ``--debug`` and pressing the key.
 """
 
+import contextlib
 import threading
+from collections.abc import Callable
+from typing import ClassVar
 
 
 class InputEvent:
@@ -52,27 +54,41 @@ class InputEvent:
             Ctrl + key recording lock).
     """
 
-    __slots__ = ('code', 'is_mouse', 'is_down', 'is_up', 'is_ctrl')
+    __slots__ = ('code', 'is_ctrl', 'is_down', 'is_mouse', 'is_up')
 
-    def __init__(self, code, is_mouse, is_down, is_up, is_ctrl):
+    def __init__(
+        self,
+        code: str,
+        is_mouse: bool,
+        is_down: bool,
+        is_up: bool,
+        is_ctrl: bool,
+    ) -> None:
+        """Store the normalized event fields (see the class docstring)."""
         self.code = code
         self.is_mouse = is_mouse
         self.is_down = is_down
         self.is_up = is_up
         self.is_ctrl = is_ctrl
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Return a compact, human-readable representation for logs."""
         direction = 'down' if self.is_down else 'up' if self.is_up else '?'
         kind = 'MOUSE' if self.is_mouse else 'KEY'
-        return 'InputEvent(%s %s %r)' % (kind, direction, self.code)
+        return f'InputEvent({kind} {direction} {self.code!r})'
+
+
+# A backend reports every press/release by calling this with an InputEvent.
+EventCallback = Callable[[InputEvent], None]
 
 
 class XHookBackend:
     """Historical X11 backend built on pyxhook / Xlib (X11 sessions only)."""
 
-    CTRL_CODES = {'control_l', 'control_r'}
+    CTRL_CODES: ClassVar[set[str]] = {'control_l', 'control_r'}
 
-    def __init__(self, on_event):
+    def __init__(self, on_event: EventCallback) -> None:
+        """Hook the keyboard and mouse through pyxhook (listener not started)."""
         import pyxhook
 
         self._on_event = on_event
@@ -104,7 +120,8 @@ class XHookBackend:
         self.hookman.MouseAllButtonsUp = self._handle
         self.hookman.HookKeyboard()
 
-    def _handle(self, event):
+    def _handle(self, event: object) -> None:
+        """Translate a raw pyxhook event into an InputEvent and dispatch it."""
         if hasattr(event, 'Key'):
             code = event.Key.lower()
             is_mouse = False
@@ -121,10 +138,12 @@ class XHookBackend:
             is_ctrl=code in self.CTRL_CODES,
         ))
 
-    def start(self):
+    def start(self) -> None:
+        """Start the pyxhook listener thread."""
         self.hookman.start()
 
-    def stop(self):
+    def stop(self) -> None:
+        """Stop the pyxhook listener thread."""
         self.hookman.cancel()
 
 
@@ -135,9 +154,10 @@ class EvdevBackend:
     applications keep receiving input normally.
     """
 
-    CTRL_CODES = {'leftctrl', 'rightctrl'}
+    CTRL_CODES: ClassVar[set[str]] = {'leftctrl', 'rightctrl'}
 
-    def __init__(self, on_event):
+    def __init__(self, on_event: EventCallback) -> None:
+        """Open the readable input devices (listener thread not started)."""
         import evdev
         from evdev import ecodes
 
@@ -160,13 +180,14 @@ class EvdevBackend:
 
         self._devices = self._open_devices()
         if not self._devices:
-            raise RuntimeError(
+            msg = (
                 'evdev backend: no readable input device found. '
                 'Add your user to the "input" group '
                 '(sudo usermod -aG input $USER) and re-login.'
             )
+            raise RuntimeError(msg)
 
-    def _open_devices(self):
+    def _open_devices(self) -> list:
         """Open every input device that reports keys or buttons."""
         devices = []
         for path in self._evdev.list_devices():
@@ -182,18 +203,20 @@ class EvdevBackend:
         return devices
 
     @property
-    def device_names(self):
+    def device_names(self) -> list[str]:
+        """Names of the input devices currently being watched."""
         return [dev.name for dev in self._devices]
 
     @staticmethod
-    def _first_name(name):
+    def _first_name(name: str | list[str] | None) -> str | None:
+        """Return a single code name, picking the first of any aliases."""
         if name is None:
             return None
         if isinstance(name, (list, tuple)):
             return name[0]
         return name
 
-    def _code_for(self, code):
+    def _code_for(self, code: int) -> tuple[str | None, bool]:
         """Map an evdev key code to a (normalized_name, is_mouse) pair."""
         if code in self._mouse:
             return self._mouse[code], True
@@ -209,7 +232,8 @@ class EvdevBackend:
 
         return None, False
 
-    def _dispatch(self, ev):
+    def _dispatch(self, ev: object) -> None:
+        """Filter and translate one raw evdev event into an InputEvent."""
         if ev.type != self._ecodes.EV_KEY:
             return
         # value: 0 = release, 1 = press, 2 = autorepeat (ignored on purpose so
@@ -230,7 +254,8 @@ class EvdevBackend:
             is_ctrl=code in self.CTRL_CODES,
         ))
 
-    def _run(self):
+    def _run(self) -> None:
+        """Read events from all devices until stop() is called."""
         import selectors
 
         sel = selectors.DefaultSelector()
@@ -245,23 +270,21 @@ class EvdevBackend:
                             self._dispatch(ev)
                     except OSError:
                         # Device unplugged: stop watching it
-                        try:
+                        with contextlib.suppress(KeyError):
                             sel.unregister(dev)
-                        except KeyError:
-                            pass
         finally:
             sel.close()
             for dev in self._devices:
-                try:
+                with contextlib.suppress(OSError):
                     dev.close()
-                except OSError:
-                    pass
 
-    def start(self):
+    def start(self) -> None:
+        """Start the background device-reading thread."""
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
+        """Signal the reading thread to stop and wait for it to finish."""
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=2)
@@ -273,21 +296,22 @@ BACKENDS = {
 }
 
 
-def make_backend(name, on_event):
+def make_backend(name: str, on_event: EventCallback) -> XHookBackend | EvdevBackend:
     """Instantiate a backend by name, with friendly errors on missing deps."""
     try:
         backend_cls = BACKENDS[name]
     except KeyError:
-        raise ValueError('Unknown backend %r (choose from %s)' % (
-            name, ', '.join(sorted(BACKENDS))
-        ))
+        choices = ', '.join(sorted(BACKENDS))
+        msg = f'Unknown backend {name!r} (choose from {choices})'
+        raise ValueError(msg) from None
 
     try:
         return backend_cls(on_event)
     except ImportError as exc:
         if name == 'evdev':
-            raise RuntimeError(
+            msg = (
                 "evdev backend requires the 'evdev' package: "
                 'install it with `uv sync --extra evdev`.'
-            ) from exc
+            )
+            raise RuntimeError(msg) from exc
         raise

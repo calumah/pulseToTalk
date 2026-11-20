@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 #
 # Copyright (C) 2020
 #
@@ -16,14 +15,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+"""On-screen recording indicator: a small draggable, pulsing overlay dot."""
+
 import math
 import tkinter as tk
+
 from pulsectl import Pulse
 
 
 class RecordingIndicator(tk.Tk):
+    """Hidden root window driving the overlay dot from the mute state."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Create the overlay and its own pulseaudio connection."""
         super().__init__()
 
         # Remove root window to avoid two windows
@@ -39,36 +43,39 @@ class RecordingIndicator(tk.Tk):
         self._phase = 0.0
 
     # Custom methods
-    def active_recording(self):
+    def active_recording(self) -> None:
+        """Pulse the dot red to signal that audio is being captured."""
         self._phase += 0.15
         brightness = (math.sin(self._phase) + 1) / 2  # 0.0 → 1.0
         r = int(180 + 55 * brightness)
         g = int(20 * (1 - brightness))
         b = int(20 * (1 - brightness))
-        self.overlay.set_dot_color('#%02x%02x%02x' % (r, g, b))
+        self.overlay.set_dot_color(f'#{r:02x}{g:02x}{b:02x}')
 
-    def inactive_recording(self):
+    def inactive_recording(self) -> None:
+        """Dim the dot to signal that all sources are muted."""
         self._phase = 0.0
         self.overlay.set_dot_color('#3a3a3a')
 
-    def start(self):
+    def start(self) -> None:
         """Start the periodic update loop using tkinter's scheduler."""
         self._schedule_update()
 
-    def _schedule_update(self):
+    def _schedule_update(self) -> None:
+        """Run one update and re-schedule the next on tkinter's loop."""
         self.do_update()
         self.after(100, self._schedule_update)
 
-    def do_update(self):
+    def do_update(self) -> None:
+        """Refresh the dot once from the current mute state."""
         # Check status for recording indicator
         if self.is_sources_muted():
             self.inactive_recording()
         else:
             self.active_recording()
 
-    def is_sources_muted(self):
-        """Return False if at least one source is recording
-        """
+    def is_sources_muted(self) -> bool:
+        """Return False if at least one source is recording."""
         for source in self.pulse.source_list():
             # Exclude monitors input
             if source.name.endswith('.monitor'):
@@ -81,19 +88,19 @@ class RecordingIndicator(tk.Tk):
 
 
 class Overlay(tk.Toplevel):
+    """Small borderless always-on-top window holding the draggable dot."""
 
     SIZE = 36
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        """Build the borderless overlay window and its dot canvas."""
         super().__init__(*args, **kwargs)
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
 
-        self.geometry('%dx%d+%d+6' % (
-            self.SIZE, self.SIZE,
-            int(self.winfo_screenwidth() / 2)
-        ))
+        x = int(self.winfo_screenwidth() / 2)
+        self.geometry(f'{self.SIZE}x{self.SIZE}+{x}+6')
 
         self.canvas = tk.Canvas(
             self,
@@ -116,20 +123,24 @@ class Overlay(tk.Toplevel):
         self.canvas.bind('<ButtonRelease-1>', self.stop_move)
         self.canvas.bind('<B1-Motion>', self.on_motion)
 
-    def set_dot_color(self, color):
+    def set_dot_color(self, color: str) -> None:
+        """Set the fill color of the dot."""
         self.canvas.itemconfig(self.dot, fill=color)
 
-    def start_move(self, event):
+    def start_move(self, event: tk.Event) -> None:
+        """Record the grab point when the drag starts."""
         self.x = event.x
         self.y = event.y
 
-    def stop_move(self, event):
+    def stop_move(self, _event: tk.Event) -> None:
+        """Clear the grab point when the drag ends."""
         self.x = None
         self.y = None
 
-    def on_motion(self, event):
+    def on_motion(self, event: tk.Event) -> None:
+        """Move the overlay to follow the pointer during a drag."""
         deltax = event.x - self.x
         deltay = event.y - self.y
         x = self.winfo_x() + deltax
         y = self.winfo_y() + deltay
-        self.geometry('+%s+%s' % (x, y))
+        self.geometry(f'+{x}+{y}')

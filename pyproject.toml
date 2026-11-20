@@ -28,3 +28,40 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle + pyflakes
+    "I",             # isort
+    "UP",            # pyupgrade
+    "B",             # flake8-bugbear
+    "SIM",           # flake8-simplify
+    "C4",            # flake8-comprehensions
+    "RUF",           # ruff-specific
+    "PL",            # pylint
+    "PERF",          # perflint
+    "PTH",           # flake8-use-pathlib
+    "RET",           # flake8-return
+    "ARG",           # flake8-unused-arguments
+    "N",             # pep8-naming
+    "D",             # pydocstyle
+    "ANN",           # flake8-annotations
+    "TRY",           # tryceratops
+    "EM",            # flake8-errmsg
+    "FBT",           # flake8-boolean-trap
+]
+
+ignore = [
+    # Lazy imports of optional backends (pyxhook / evdev) are intentional:
+    # they keep each dependency optional and give friendly errors when missing.
+    "PLC0415",
+    # Boolean-trap rules fight unavoidable third-party APIs
+    # (pulsectl `mute(obj, bool)`, tkinter `attributes('-topmost', True)`).
+    "FBT001", "FBT002", "FBT003",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
