@@ -18,6 +18,7 @@
 import argparse
 
 from .app import PulseToTalk
+from .voice import EFFECTS
 
 LICENSE_NOTICE = (
     'This program comes with ABSOLUTELY NO WARRANTY.\n'
@@ -58,6 +59,20 @@ def main() -> None:
         default='xhook',
         help='Input backend : xhook (X11 only, default) or '
         'evdev (X11 + Wayland, needs read access to /dev/input)',
+    )
+    parser.add_argument(
+        '--voice',
+        nargs='+',
+        choices=list(EFFECTS),
+        metavar='EFFECT',
+        help='Transform your voice through a virtual mic. Effects are '
+        f'chained in order (e.g. deep robot) : {", ".join(EFFECTS)}. '
+        'Needs `uv sync --extra voice`',
+    )
+    parser.add_argument(
+        '--voice_source',
+        help='Real mic captured by --voice (default: first of --sources, '
+        'else the default source)',
     )
     args = parser.parse_args()
 

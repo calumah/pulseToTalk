@@ -45,6 +45,10 @@ class PulseToTalk:
                 pulseaudio sources (default: None)
             - backend (str) : Input backend, 'xhook' (X11) or
                 'evdev' (X11 + Wayland) (default: 'xhook')
+            - voice (list) : Voice effects to apply through a virtual
+                mic, e.g. ['robot'] (optional) (default: None)
+            - voice_source (str) : Real mic captured by the voice
+                effects (default: first of sources, else default source)
             - debug (bool) : Activate debug mode (default: False)
         """
         self.config = kwargs
@@ -80,9 +84,25 @@ class PulseToTalk:
         self.recording_indicator = None
         if self.config.get('no_indicator', False) is False:
             # Init RecordingIndicator
+            voice = self.config.get('voice')
             self.recording_indicator = RecordingIndicator(
                 is_locked=lambda: self.lock_recording,
+                label=' + '.join(voice) if voice else None,
             )
+
+        # Optional voice changer, exposing a virtual mic with the effects
+        self.voice = None
+        if self.config.get('voice'):
+            from .voice import VoiceChanger
+
+            sources = self.config.get('sources') or [None]
+            self.voice = VoiceChanger(
+                self.pulse,
+                self.config['voice'],
+                source=self.config.get('voice_source') or sources[0],
+                logger=self.logger,
+            )
+            self.voice.start()
 
         # Store if recording is locked
         self.lock_recording = False
@@ -147,6 +167,9 @@ class PulseToTalk:
         self.backend.stop()
         # Unmute all
         self.mute_sources(False)
+        # Remove the virtual mic and restore the default source
+        if self.voice is not None:
+            self.voice.stop()
         self.logger.debug('Terminated')
 
     def mute_sources(self, is_mute: bool = True) -> None:
@@ -162,6 +185,18 @@ class PulseToTalk:
             # Exclude monitors input
             if source.name.endswith('.monitor'):
                 continue
+
+            if self.voice is not None:
+                # The virtual mic is gated by the real one it is fed from:
+                # left open, it carries effect tails (reverb, radio squelch)
+                # after the key is released, then silence
+                if source.name == self.voice.source_name:
+                    continue
+                # ... so that real mic must always follow push-to-talk
+                if source.name == self.voice.source:
+                    self.pulse.mute(source, is_mute)
+                    self.logger.info(f'- {source}')
+                    continue
 
             # Mute only specified sources
             if sources and source.name not in sources:
@@ -191,6 +226,8 @@ class PulseToTalk:
         ):
             self.is_recording = False
             self.mute_sources()
+            if self.voice is not None:
+                self.voice.release()
 
     def on_key_event(self, event: InputEvent) -> None:
         """Handle a normalized InputEvent coming from the active backend."""

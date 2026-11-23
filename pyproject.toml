@@ -19,6 +19,8 @@ dependencies = [
 # Wayland-capable input backend (reads /dev/input). Builds a C extension, so
 # it is kept optional: `uv sync --extra evdev`.
 evdev = ["evdev>=1.6.1"]
+# Real-time voice effects (--voice) through a virtual mic.
+voice = ["numpy>=2.0"]
 
 [project.scripts]
 pulsetotalk = "pulsetotalk.__main__:main"

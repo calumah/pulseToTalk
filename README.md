@@ -7,9 +7,10 @@ Your microphone stays muted by default and is unmuted only while you hold your c
 ## Features
 
 - **Bind any key and/or mouse button** to activate your microphone while held (you can bind several at once).
-- **Recording indicator**: a small draggable pill overlay whose badge shows the mic state (gray muted, red live, amber locked), with a live level meter while you talk (can be disabled).
+- **Recording indicator**: a small draggable pill overlay whose badge shows the mic state (gray muted, red live, amber locked), with a live level meter while you talk and the active voice effect (can be disabled).
 - **Lock recording** hands-free with `Ctrl + <bound key>`, and unlock it the same way.
 - **Target specific sources**: mute/unmute only the PulseAudio sources you choose, or all of them.
+- **Voice effects**: talk through a virtual microphone with a robot, demon, chipmunk, alien, radio, megaphone, underwater, cathedral or 8-bit voice (optional).
 - **Works on X11 and Wayland**: default X11 backend, plus an optional `evdev` backend that reads input below the display server.
 - **Runs entirely in user mode** — no root required.
 
@@ -85,6 +86,8 @@ $ uv run pulsetotalk -h
 | `--no_indicator` | Do not show the recording indicator overlay. |
 | `--sources <name> [<name> ...]` | Operate only on the given PulseAudio sources (default: all). |
 | `--backend {xhook,evdev}` | Input backend: `xhook` (X11 only, default) or `evdev` (X11 + Wayland). See [Wayland](#wayland-evdev-backend). |
+| `--voice <effect> [<effect> ...]` | Transform your voice through a virtual mic; effects are chained in order. See [Voice effects](#voice-effects). |
+| `--voice_source <name>` | Real mic captured by `--voice` (default: first of `--sources`, else the default source). |
 | `--debug` | Print debug output (key codes, source names, events). |
 
 ### Lock recording
@@ -111,6 +114,38 @@ $ uv run --extra evdev pulsetotalk --backend evdev --event_code f12
 Notes:
 - Key **names differ** between backends (e.g. Scroll Lock is `scroll_lock` under `xhook` but `scrolllock` under `evdev`). List the names your backend reports with `--debug`.
 - The recording indicator runs through XWayland; it is displayed, but Wayland may restrict its position and always-on-top behaviour.
+
+### Voice effects
+
+pulseToTalk can transform your voice in real time. Install the optional dependency (numpy):
+```
+$ uv sync --extra voice
+```
+
+Then pick one or more effects (chained in the given order):
+```
+$ uv run --extra voice pulsetotalk --event_code f12 --voice robot
+$ uv run --extra voice pulsetotalk --event_code f12 --voice deep robot
+```
+
+| Effect | Sound |
+| --- | --- |
+| `robot` | Ring modulation + metallic comb filter |
+| `deep` | Pitch lowered ~6 semitones (demon voice) |
+| `chipmunk` | Pitch raised ~7 semitones |
+| `alien` | Fast vibrato on a slightly raised voice |
+| `radio` | Walkie-talkie: band-limited, overdriven, hissy, with a "kshhh" when you release the key |
+| `megaphone` | Tight band-pass + hard distortion |
+| `underwater` | Strong low-pass + slow floating chorus |
+| `cathedral` | Large hall reverb (~3 s tail, kept after you release the key) |
+| `8bit` | Retro console: 5-bit, 8 kHz bitcrusher |
+
+How it works: while running, pulseToTalk creates a virtual microphone named **pulseToTalk virtual mic** (`pulsetotalk_mic`) and makes it the default source. Your real mic is captured with `parec`, processed, and played into it with `pacat`. Push-to-talk works as usual: your real mic is muted until you press your bound key, so the virtual mic carries silence. The virtual mic itself stays unmuted, so effect tails (reverb, radio squelch) are heard after you release the key. On exit, the virtual mic is removed and the previous default source restored.
+
+Notes:
+- Apps that follow the default source pick up the effect automatically. If an app is set to a specific mic, select **pulseToTalk virtual mic** in its audio settings (or move its recording stream in `pavucontrol`).
+- `parec` / `pacat` must be installed (`pulseaudio-utils`, `libpulse` or `pipewire-pulse` depending on your distribution).
+- Effects add about 50 ms of latency. The virtual mic needs ~2 s to warm up at startup.
 
 ## License
 

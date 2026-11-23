@@ -16,7 +16,7 @@
 """On-screen recording indicator: a small draggable "pill" overlay.
 
 The pill shows a microphone badge, a live level meter fed by the default
-source while it is unmuted, and an optional text label. The state is
+source while it is unmuted, and the active voice effect if any. The state is
 carried by the badge color: gray (muted), red (live), amber (locked). It is
 rendered antialiased with Pillow and, on X11 (or XWayland), the window is
 given rounded edges with the X SHAPE extension.
@@ -35,6 +35,8 @@ from collections.abc import Callable
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 from pulsectl import Pulse
+
+from .voice import SOURCE_NAME as VIRTUAL_MIC
 
 # Palette (RGB)
 BG = (22, 22, 26)
@@ -198,8 +200,9 @@ class RecordingIndicator(tk.Tk):
     def is_sources_muted(self) -> bool:
         """Return False if at least one source is recording."""
         for source in self.pulse.source_list():
-            # Exclude monitors input
-            if source.name.endswith('.monitor'):
+            # Exclude monitors input, and the voice changer's virtual mic
+            # which stays open (it is gated by the real mic it is fed from)
+            if source.name.endswith('.monitor') or source.name == VIRTUAL_MIC:
                 continue
             # mute = 0 mean recording
             if source.mute == 0:
