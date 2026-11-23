@@ -12,6 +12,7 @@ dependencies = [
     "colorlog>=6.9.0",
     "pyxhook>=1.0.0",
     "tk>=0.1.0",
+    "pillow>=10.1",
 ]
 
 [project.optional-dependencies]

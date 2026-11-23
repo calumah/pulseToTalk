@@ -7,7 +7,7 @@ Your microphone stays muted by default and is unmuted only while you hold your c
 ## Features
 
 - **Bind any key and/or mouse button** to activate your microphone while held (you can bind several at once).
-- **Recording indicator**: a small draggable overlay dot that pulses red while sound is being captured (can be disabled).
+- **Recording indicator**: a small draggable pill overlay whose badge shows the mic state (gray muted, red live, amber locked), with a live level meter while you talk (can be disabled).
 - **Lock recording** hands-free with `Ctrl + <bound key>`, and unlock it the same way.
 - **Target specific sources**: mute/unmute only the PulseAudio sources you choose, or all of them.
 - **Works on X11 and Wayland**: default X11 backend, plus an optional `evdev` backend that reads input below the display server.

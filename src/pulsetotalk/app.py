@@ -16,6 +16,7 @@
 """Push-to-talk microphone muting for PulseAudio in user mode (CLI only)."""
 
 import logging
+import signal
 import threading
 
 import colorlog
@@ -79,7 +80,9 @@ class PulseToTalk:
         self.recording_indicator = None
         if self.config.get('no_indicator', False) is False:
             # Init RecordingIndicator
-            self.recording_indicator = RecordingIndicator()
+            self.recording_indicator = RecordingIndicator(
+                is_locked=lambda: self.lock_recording,
+            )
 
         # Store if recording is locked
         self.lock_recording = False
@@ -113,16 +116,33 @@ class PulseToTalk:
         The input backend runs in its own thread; this method just keeps the
         process alive. If the recording indicator is active, it delegates to
         tkinter's mainloop (so the indicator's X11 access stays on one thread);
-        otherwise it blocks on a threading.Event until Ctrl + C.
+        otherwise it blocks on a threading.Event.
+
+        Ctrl + C (SIGINT) and SIGTERM go through a signal handler that asks
+        the loop to stop, rather than through KeyboardInterrupt: tkinter
+        swallows exceptions raised inside its callbacks (it only prints them),
+        so a Ctrl + C landing during an indicator refresh was ignored.
         """
-        try:
+        stop_event = threading.Event()
+
+        def request_stop(_signum: int, _frame: object) -> None:
+            stop_event.set()
             if self.recording_indicator is not None:
-                self.recording_indicator.start()
-                self.recording_indicator.mainloop()
-            else:
-                threading.Event().wait()
-        except KeyboardInterrupt:
-            pass
+                self.recording_indicator.quit()
+            # A second Ctrl + C during cleanup aborts immediately
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+
+        signal.signal(signal.SIGINT, request_stop)
+        signal.signal(signal.SIGTERM, request_stop)
+
+        if self.recording_indicator is not None:
+            self.recording_indicator.start()
+            self.recording_indicator.mainloop()
+        else:
+            stop_event.wait()
+
+        if self.recording_indicator is not None:
+            self.recording_indicator.stop()
         # Close the listener when we are done
         self.backend.stop()
         # Unmute all
