@@ -16,8 +16,10 @@
 """Command-line entry point for pulseToTalk."""
 
 import argparse
+from pathlib import Path
 
 from .app import PulseToTalk
+from .config import DEFAULT_PATH, SCHEMA, ConfigError, load_config, save_config
 from .voice import EFFECTS
 
 LICENSE_NOTICE = (
@@ -74,11 +76,44 @@ def main() -> None:
         help='Real mic captured by --voice (default: first of --sources, '
         'else the default source)',
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        '--config',
+        type=Path,
+        help=f'JSON file holding default options (default: {DEFAULT_PATH}). '
+        'Command-line options take precedence',
+    )
+    parser.add_argument(
+        '--save_config',
+        action='store_true',
+        help='Save the options given on this command line to the config '
+        'file (merged with its current content), then run',
+    )
+
+    # First pass : find the config file and the options given explicitly
+    given, _ = parser.parse_known_args()
+    path = given.config or DEFAULT_PATH
+    explicit = {
+        name: value
+        for name, value in vars(given).items()
+        if name in SCHEMA and value != parser.get_default(name)
+    }
+    try:
+        config = load_config(path, required=given.config is not None)
+    except ConfigError as exc:
+        parser.error(str(exc))
+
+    # Second pass : the config file provides the defaults
+    parser.set_defaults(**config)
+    args = vars(parser.parse_args())
+
+    if args.pop('save_config'):
+        save_config(path, {**config, **explicit})
+        print(f'Options saved to {path}')
+    args.pop('config')
 
     print(LICENSE_NOTICE)
 
-    PulseToTalk(**vars(args)).run()
+    PulseToTalk(**args).run()
 
 
 if __name__ == '__main__':

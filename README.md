@@ -88,7 +88,28 @@ $ uv run pulsetotalk -h
 | `--backend {xhook,evdev}` | Input backend: `xhook` (X11 only, default) or `evdev` (X11 + Wayland). See [Wayland](#wayland-evdev-backend). |
 | `--voice <effect> [<effect> ...]` | Transform your voice through a virtual mic; effects are chained in order. See [Voice effects](#voice-effects). |
 | `--voice_source <name>` | Real mic captured by `--voice` (default: first of `--sources`, else the default source). |
+| `--config <file>` | JSON file holding default options (default: `~/.pulseToTalk.json`). See [Configuration file](#configuration-file). |
+| `--save_config` | Save the options given on the command line to the config file, then run. |
 | `--debug` | Print debug output (key codes, source names, events). |
+
+### Configuration file
+
+To avoid typing the same options every time, put them in `~/.pulseToTalk.json`, which is read at startup. Keys are the option names:
+```json
+{
+    "event_code": ["f12", "mouse_middle"],
+    "backend": "evdev",
+    "voice": ["robot"]
+}
+```
+
+The easiest way to create it is to add `--save_config` to a command line you like; its options are merged into the file:
+```
+$ uv run pulsetotalk --event_code f12 --voice robot --save_config
+$ uv run pulsetotalk            # same as above from now on
+```
+
+Options given on the command line take precedence over the file (e.g. `--voice deep` for a one-off). Use `--config <file>` to read another file. Note that a `true` boolean (`no_indicator`, `debug`) in the file cannot be turned off from the command line; edit the file instead.
 
 ### Lock recording
 
