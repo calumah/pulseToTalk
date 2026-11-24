@@ -7,7 +7,7 @@ Your microphone stays muted by default and is unmuted only while you hold your c
 ## Features
 
 - **Bind any key and/or mouse button** to activate your microphone while held (you can bind several at once).
-- **Recording indicator**: a small draggable pill overlay whose badge shows the mic state (gray muted, red live, amber locked), with a live level meter while you talk and the active voice effect (can be disabled).
+- **Recording indicator**: a small draggable pill overlay whose badge shows the mic state (gray muted, red live, amber locked), with a live level meter while you talk and the active voice effect. Drag it to move it, `Ctrl` + mouse wheel to resize it (can be disabled).
 - **Lock recording** hands-free with `Ctrl + <bound key>`, and unlock it the same way.
 - **Target specific sources**: mute/unmute only the PulseAudio sources you choose, or all of them.
 - **Voice effects**: talk through a virtual microphone with a robot, demon, chipmunk, alien, radio, megaphone, underwater, cathedral or 8-bit voice (optional).

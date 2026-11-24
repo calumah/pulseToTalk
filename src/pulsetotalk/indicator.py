@@ -212,9 +212,15 @@ class RecordingIndicator(tk.Tk):
 
 
 class Overlay(tk.Toplevel):
-    """Borderless always-on-top pill window, draggable with the mouse."""
+    """Borderless always-on-top pill window.
+
+    Drag it with the left mouse button; Ctrl + mouse wheel resizes it.
+    """
 
     HEIGHT = 34
+    ZOOM_STEP = 1.1
+    # Below 0.8 the mic glyph and the label are no longer legible
+    ZOOM_MIN, ZOOM_MAX = 0.8, 3.0
 
     def __init__(self, master: tk.Tk, text: str | None = None) -> None:
         """Build the overlay window, sized to fit the optional text."""
@@ -225,36 +231,61 @@ class Overlay(tk.Toplevel):
         with contextlib.suppress(tk.TclError):
             self.attributes('-alpha', 0.95)
 
-        # HiDPI : scale everything from the screen DPI (96 = 1x)
-        self.scale = max(1.0, self.winfo_fpixels('1i') / 96)
-        s = self.scale * SUPERSAMPLE
-        self.font = _font(round(10 * s))
+        # HiDPI : base scale from the screen DPI (96 = 1x), times user zoom
+        self.base_scale = max(1.0, self.winfo_fpixels('1i') / 96)
+        self.zoom = 1.0
         self.text = text
 
-        u = self.scale
-        self.h = round(self.HEIGHT * u)
-        self.badge_x = 9 * u + 11 * u  # Badge center
-        self.bars_x = self.badge_x + 11 * u + 10 * u
-        bars_end = self.bars_x + BARS * 5 * u - 2 * u
-        if text:
-            self.text_x = bars_end + 10 * u
-            text_w = self.font.getlength(text) / SUPERSAMPLE
-            self.w = round(self.text_x + text_w + 14 * u)
-        else:
-            self.w = round(bars_end + 14 * u)
-
+        self.label = tk.Label(self, bd=0, bg='#16161a')
+        self.label.pack()
+        self._layout()
         x = int((self.winfo_screenwidth() - self.w) / 2)
         self.geometry(f'{self.w}x{self.h}+{x}+8')
-
-        self.image = Image.new('RGB', (self.w, self.h), BG)
-        self.photo = ImageTk.PhotoImage(self.image)
-        self.label = tk.Label(self, image=self.photo, bd=0, bg='#16161a')
-        self.label.pack()
 
         self.label.bind('<ButtonPress-1>', self.start_move)
         self.label.bind('<ButtonRelease-1>', self.stop_move)
         self.label.bind('<B1-Motion>', self.on_motion)
+        # Ctrl + wheel : X11 reports the wheel as buttons 4 / 5 (Tk 8.6),
+        # newer Tk versions as <MouseWheel>
+        self.label.bind('<Control-Button-4>', lambda _e: self.zoom_by(1))
+        self.label.bind('<Control-Button-5>', lambda _e: self.zoom_by(-1))
+        self.label.bind(
+            '<Control-MouseWheel>',
+            lambda e: self.zoom_by(1 if e.delta > 0 else -1),
+        )
 
+        self.update_idletasks()
+        self._round_corners()
+
+    def _layout(self) -> None:
+        """Compute every dimension from the current scale."""
+        u = self.scale = self.base_scale * self.zoom
+        self.font = _font(round(10 * u * SUPERSAMPLE))
+        self.h = round(self.HEIGHT * u)
+        self.badge_x = 9 * u + 11 * u  # Badge center
+        self.bars_x = self.badge_x + 11 * u + 10 * u
+        bars_end = self.bars_x + BARS * 5 * u - 2 * u
+        if self.text:
+            self.text_x = bars_end + 10 * u
+            text_w = self.font.getlength(self.text) / SUPERSAMPLE
+            self.w = round(self.text_x + text_w + 14 * u)
+        else:
+            self.w = round(bars_end + 14 * u)
+        self.photo = ImageTk.PhotoImage(Image.new('RGB', (self.w, self.h), BG))
+        self.label.configure(image=self.photo)
+
+    def zoom_by(self, steps: int) -> None:
+        """Grow (steps > 0) or shrink (steps < 0) the pill around its center."""
+        zoom = self.zoom * self.ZOOM_STEP**steps
+        zoom = min(max(zoom, self.ZOOM_MIN), self.ZOOM_MAX)
+        if zoom == self.zoom:
+            return
+        cx = self.winfo_x() + self.w / 2
+        cy = self.winfo_y() + self.h / 2
+        self.zoom = zoom
+        self._layout()
+        x, y = round(cx - self.w / 2), round(cy - self.h / 2)
+        self.geometry(f'{self.w}x{self.h}+{x}+{y}')
         self.update_idletasks()
         self._round_corners()
 
